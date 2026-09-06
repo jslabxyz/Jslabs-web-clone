@@ -1,6 +1,8 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
+import { normalizeInspectInput } from "@/lib/urls";
+
 const BLOCKED_HOSTS = new Set([
   "localhost",
   "localhost.localdomain",
@@ -63,9 +65,9 @@ export async function assertPublicHttpUrl(raw: string): Promise<URL> {
 
   let url: URL;
   try {
-    url = new URL(trimmed);
+    url = new URL(normalizeInspectInput(trimmed));
   } catch {
-    throw new PublicUrlError("Enter a full URL, including https://");
+    throw new PublicUrlError("Enter a public page URL, like jslabs.xyz");
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {

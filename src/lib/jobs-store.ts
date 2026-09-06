@@ -1,5 +1,6 @@
 import { JOBS_STORAGE_KEY } from "@/lib/constants";
 import type { CloneJob } from "@/lib/types";
+import { inspectPageKey } from "@/lib/urls";
 
 export const JOBS_SSR_SNAPSHOT = "jslabs-clone-jobs-ssr";
 
@@ -19,7 +20,11 @@ export function writeJobs(jobs: CloneJob[]): void {
 }
 
 export function upsertJob(job: CloneJob): CloneJob[] {
-  const next = [job, ...readJobs().filter((item) => item.id !== job.id)];
+  const key = inspectPageKey(job.inspection.finalUrl);
+  const next = [
+    job,
+    ...readJobs().filter((item) => item.id !== job.id && inspectPageKey(item.inspection.finalUrl) !== key),
+  ];
   writeJobs(next);
   return next;
 }

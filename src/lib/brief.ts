@@ -19,6 +19,8 @@ export function buildCloneBrief(inspection: SiteInspection): string {
     "## Page identity",
     `- Language: ${inspection.language ?? "not declared"}`,
     `- Description: ${inspection.description || "none"}`,
+    `- Canonical: ${inspection.canonical ?? "not declared"}`,
+    `- Open Graph image: ${inspection.ogImage ?? "none"}`,
     `- Generator: ${inspection.generator ?? "not declared"}`,
     `- Theme color: ${inspection.themeColor ?? "not declared"}`,
     `- Word count (approx): ${inspection.wordCount}`,
