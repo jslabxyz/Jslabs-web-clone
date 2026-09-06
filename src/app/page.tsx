@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { CloneForm } from "@/components/clone-form";
 
 const STEPS = [
@@ -26,11 +28,18 @@ export default function Home() {
         Inspect a live page. Leave with a factory brief.
       </h1>
       <p className="mt-5 max-w-2xl text-lg text-muted-foreground">
-        A service for one named job: reverse-engineer a public website into structure, tokens and copy the JS Labs factory can build from. You keep the review.
+        A service for one named job: reverse-engineer a public website into structure, tokens and copy the JS Labs factory can build from. Use the desk, or call the inspect API from another tool. You keep the review.
       </p>
       <div className="mt-10 max-w-3xl">
         <CloneForm />
       </div>
+      <p className="mt-5 max-w-3xl text-sm text-muted-foreground">
+        Same inspect as HTTP:{" "}
+        <Link href="/how-it-works#inspect-service" className="underline-offset-4 hover:text-foreground hover:underline">
+          GET or POST /api/inspect
+        </Link>
+        .
+      </p>
       <ol className="mt-20 grid gap-8 border-t border-border pt-12 md:grid-cols-3">
         {STEPS.map((step) => (
           <li key={step.n}>

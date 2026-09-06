@@ -137,27 +137,47 @@ export function extractImages(
   html: string,
   pageUrl: URL,
 ): Array<{ src: string; alt: string }> {
-  const tags = html.match(/<img\b[^>]*>/gi) ?? [];
   const images: Array<{ src: string; alt: string }> = [];
   const seen = new Set<string>();
 
-  for (const tag of tags) {
-    const rawSrc = matchAttr(tag, "src") ?? matchAttr(tag, "data-src");
-    if (!rawSrc || rawSrc.startsWith("data:")) continue;
-    let resolved: URL;
-    try {
-      resolved = new URL(rawSrc, pageUrl);
-    } catch {
-      continue;
-    }
-    const src = resolved.toString();
-    if (seen.has(src)) continue;
+  const add = (raw: string | null, alt: string, requireImagePath = false) => {
+    if (images.length >= MAX_ITEMS.images) return;
+    const candidate = firstSrcsetUrl(raw);
+    if (!candidate || candidate.startsWith("data:")) return;
+    const src = resolveAssetUrl(candidate, pageUrl);
+    if (!src || seen.has(src)) return;
+    if (requireImagePath && !isRasterOrVectorImage(src)) return;
     seen.add(src);
-    images.push({
-      src,
-      alt: matchAttr(tag, "alt") ?? "",
-    });
-    if (images.length >= MAX_ITEMS.images) break;
+    images.push({ src, alt });
+  };
+
+  for (const tag of html.match(/<img\b[^>]*>/gi) ?? []) {
+    add(
+      matchAttr(tag, "src") ?? matchAttr(tag, "data-src") ?? firstSrcsetUrl(matchAttr(tag, "srcset")),
+      matchAttr(tag, "alt") ?? "",
+    );
+  }
+
+  for (const tag of html.match(/<source\b[^>]*>/gi) ?? []) {
+    add(firstSrcsetUrl(matchAttr(tag, "srcset")) ?? matchAttr(tag, "src"), "");
+  }
+
+  add(extractMeta(html, "og:image", "property"), extractMeta(html, "og:image:alt", "property") ?? "Open Graph image");
+  add(
+    extractMeta(html, "twitter:image") ?? extractMeta(html, "twitter:image", "property"),
+    extractMeta(html, "twitter:image:alt") ?? "Twitter image",
+  );
+
+  for (const tag of html.match(/<link\b[^>]*>/gi) ?? []) {
+    const rel = matchAttr(tag, "rel")?.toLowerCase() ?? "";
+    const as = matchAttr(tag, "as")?.toLowerCase() ?? "";
+    if (as === "image" || rel.includes("image_src") || rel === "image_src") {
+      add(matchAttr(tag, "href") ?? firstSrcsetUrl(matchAttr(tag, "imagesrcset")), "");
+    }
+  }
+
+  for (const match of html.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi)) {
+    add(match[2] ?? null, "", true);
   }
 
   return images;
@@ -198,40 +218,42 @@ export function extractColors(...chunks: string[]): string[] {
 
   for (const chunk of chunks) {
     for (const match of chunk.match(hex) ?? []) {
-      found.add(normalizeHex(match));
+      const parsed = parseHexColor(match);
+      if (!parsed || parsed.alpha < 0.85 || isNearWhiteOrBlack(parsed.hex)) continue;
+      found.add(parsed.hex);
     }
     for (const match of chunk.match(rgb) ?? []) {
-      found.add(collapseWhitespace(match.toLowerCase()));
+      const parsed = parseRgbColor(match);
+      if (!parsed || parsed.alpha < 0.85 || isNearWhiteOrBlack(parsed.hex)) continue;
+      found.add(parsed.hex);
     }
   }
 
-  return [...found]
-    .filter((color) => !isNearWhiteOrBlack(color))
-    .slice(0, MAX_ITEMS.colors);
+  return [...found].slice(0, MAX_ITEMS.colors);
 }
 
 export function extractFonts(...chunks: string[]): string[] {
   const found = new Set<string>();
 
+  const remember = (name: string | undefined) => {
+    const usable = usableFontName(name);
+    if (usable) found.add(usable);
+  };
+
   for (const chunk of chunks) {
     for (const match of chunk.match(/font-family\s*:\s*([^;}{]+)/gi) ?? []) {
       const value = match.replace(/font-family\s*:\s*/i, "");
-      const first = value
-        .split(",")[0]
-        ?.replace(/['"]/g, "")
-        .replace(/var\([^)]+\)/g, "")
-        .trim();
-      if (!first || /inherit|initial|serif|sans-serif|monospace|system-ui|ui-/i.test(first)) {
-        continue;
-      }
-      found.add(first);
+      remember(value.split(",")[0]);
     }
 
     const google = chunk.match(/family=([^&"' ]+)/i)?.[1];
     if (google) {
-      for (const family of decodeURIComponent(google).split("|")) {
-        const name = family.split(":")[0]?.replace(/\+/g, " ").trim();
-        if (name) found.add(name);
+      try {
+        for (const family of decodeURIComponent(google).split("|")) {
+          remember(family.split(":")[0]?.replace(/\+/g, " "));
+        }
+      } catch {
+        remember(google.replace(/\+/g, " ").split(":")[0]);
       }
     }
   }
@@ -300,25 +322,86 @@ export function extractFavicon(html: string, pageUrl: URL): string | null {
   return new URL("/favicon.ico", pageUrl).toString();
 }
 
-function normalizeHex(value: string): string {
-  const hex = value.toLowerCase();
-  if (hex.length === 4) {
-    return `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
+function firstSrcsetUrl(value: string | null): string | null {
+  if (!value) return null;
+  const first = value.split(",")[0]?.trim().split(/\s+/)[0];
+  return first || null;
+}
+
+function isRasterOrVectorImage(src: string): boolean {
+  try {
+    const url = new URL(src);
+    const path = url.pathname.toLowerCase();
+    if (/\.(woff2?|ttf|otf|eot)$/i.test(path)) return false;
+    if (/\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)$/i.test(path)) return true;
+    if (path.includes("/_next/image") || path.includes("opengraph-image") || path.includes("twitter-image")) {
+      return true;
+    }
+    return Boolean(url.searchParams.get("url"));
+  } catch {
+    return false;
   }
-  return hex.slice(0, 7);
+}
+
+function usableFontName(value: string | undefined): string | null {
+  if (!value) return null;
+  const name = collapseWhitespace(value.replace(/['"]/g, "").replace(/var\([^)]+\)/g, "")).trim();
+  if (!name || name.length > 48) return null;
+  if (
+    /fallback|var\(|inherit|initial|unset|serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-|apple-system|blinkmacsystemfont|emoji|math|fangsong/i.test(
+      name,
+    )
+  ) {
+    return null;
+  }
+  if (!/^[a-z][a-z0-9 \-]*$/i.test(name)) return null;
+  return name;
+}
+
+function parseHexColor(value: string): { hex: string; alpha: number } | null {
+  const raw = value.toLowerCase().replace("#", "");
+  if (!/^[0-9a-f]{3}$|^[0-9a-f]{4}$|^[0-9a-f]{6}$|^[0-9a-f]{8}$/.test(raw)) return null;
+
+  if (raw.length === 3 || raw.length === 4) {
+    const hex = `#${raw[0]}${raw[0]}${raw[1]}${raw[1]}${raw[2]}${raw[2]}`;
+    const alpha = raw.length === 4 ? Number.parseInt(`${raw[3]}${raw[3]}`, 16) / 255 : 1;
+    return { hex, alpha };
+  }
+
+  return {
+    hex: `#${raw.slice(0, 6)}`,
+    alpha: raw.length === 8 ? Number.parseInt(raw.slice(6), 16) / 255 : 1,
+  };
+}
+
+function parseRgbColor(value: string): { hex: string; alpha: number } | null {
+  const match = value.match(
+    /rgba?\(\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})(?:\s*[,/]\s*([\d.]+)\s*)?\)/i,
+  );
+  if (!match) return null;
+  const r = Number(match[1]);
+  const g = Number(match[2]);
+  const b = Number(match[3]);
+  if ([r, g, b].some((channel) => !Number.isInteger(channel) || channel < 0 || channel > 255)) {
+    return null;
+  }
+  const alpha = match[4] === undefined ? 1 : Number(match[4]);
+  if (!Number.isFinite(alpha)) return null;
+  return {
+    hex: `#${[r, g, b].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`,
+    alpha,
+  };
 }
 
 function isNearWhiteOrBlack(color: string): boolean {
-  if (color.startsWith("#")) {
-    const hex = color.slice(1);
-    if (hex.length !== 6) return false;
-    const r = Number.parseInt(hex.slice(0, 2), 16);
-    const g = Number.parseInt(hex.slice(2, 4), 16);
-    const b = Number.parseInt(hex.slice(4, 6), 16);
-    const avg = (r + g + b) / 3;
-    return avg > 245 || avg < 12;
-  }
-  return false;
+  const hex = color.startsWith("#") ? color.slice(1) : color;
+  if (hex.length !== 6) return false;
+  const r = Number.parseInt(hex.slice(0, 2), 16);
+  const g = Number.parseInt(hex.slice(2, 4), 16);
+  const b = Number.parseInt(hex.slice(4, 6), 16);
+  if (![r, g, b].every((channel) => Number.isFinite(channel))) return false;
+  const avg = (r + g + b) / 3;
+  return avg > 248 || avg < 10;
 }
 
 export { MAX_ITEMS };

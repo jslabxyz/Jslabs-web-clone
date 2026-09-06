@@ -273,13 +273,17 @@ function Structure({ job }: { job: CloneJob }) {
       <section className="rounded-2xl border border-border p-5">
         <h2 className="text-sm tracking-[0.14em] text-muted-foreground uppercase">Images</h2>
         <ul className="mt-4 space-y-3">
-          {images.slice(0, 8).map((image) => (
-            <li key={image.src} className="flex gap-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={image.src} alt="" className="size-12 rounded-lg border border-border object-cover" />
-              <p className="min-w-0 truncate text-sm text-muted-foreground">{image.alt || image.src}</p>
-            </li>
-          ))}
+          {images.length > 0 ? (
+            images.slice(0, 8).map((image) => (
+              <li key={image.src} className="flex gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={image.src} alt="" className="size-12 rounded-lg border border-border object-cover" />
+                <p className="min-w-0 truncate text-sm text-muted-foreground">{image.alt || image.src}</p>
+              </li>
+            ))
+          ) : (
+            <li className="text-sm text-muted-foreground">No images extracted from the public HTML.</li>
+          )}
         </ul>
       </section>
     </div>

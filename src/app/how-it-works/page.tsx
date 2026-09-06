@@ -44,7 +44,7 @@ export default function HowItWorksPage() {
         One page in. A brief out. A person still decides.
       </h1>
       <p className="mt-5 text-lg text-muted-foreground">
-        JS Labs Clone is the first desk in the factory. It does not crawl private networks, store jobs on a server, or ship a finished site on its own.
+        JS Labs Clone is a desk and an HTTP service. It does not crawl private networks, store jobs on a server, or ship a finished site on its own.
       </p>
       <ol className="mt-12 space-y-8">
         {PIPELINE.map((step, index) => (
@@ -58,6 +58,25 @@ export default function HowItWorksPage() {
           </li>
         ))}
       </ol>
+      <section id="inspect-service" className="mt-16 scroll-mt-28 border-t border-border pt-10">
+        <p className="text-xs tracking-[0.2em] text-muted-foreground uppercase">Service</p>
+        <h2 className="mt-3 font-heading text-3xl font-light tracking-tight">Call inspect from another tool</h2>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          The desk is a UI over one route. Agents, scripts, and other JS Labs tools can inspect a public page without opening a browser. Jobs are still only saved if the client stores them.
+        </p>
+        <pre className="mt-6 overflow-x-auto rounded-2xl border border-border bg-secondary p-5 font-mono text-xs leading-6">
+          {`curl -sS -X POST "$ORIGIN/api/inspect" \\
+  -H "content-type: application/json" \\
+  -d '{"url":"https://jslabs.xyz"}'
+
+curl -sS "$ORIGIN/api/inspect?url=https://jslabs.xyz"`}
+        </pre>
+        <p className="mt-4 text-sm leading-6 text-muted-foreground">
+          JSON body or query: a public <code className="font-mono text-foreground">url</code>. Response:{" "}
+          <code className="font-mono text-foreground">inspection</code> plus{" "}
+          <code className="font-mono text-foreground">briefMarkdown</code>. Private hosts, credentials, and non-HTML responses are rejected.
+        </p>
+      </section>
       <div className="mt-12 flex flex-wrap gap-3">
         <Link href="/" className={buttonVariants({ className: "h-10 rounded-full px-4" })}>
           Open the desk
