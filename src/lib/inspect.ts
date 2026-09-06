@@ -1,5 +1,6 @@
 import { assertPublicHttpUrl, PublicUrlError } from "@/lib/url-guard";
 import {
+  detectHosting,
   detectTech,
   extractAttribute,
   extractCanonical,
@@ -66,7 +67,10 @@ export async function inspectPublicPage(rawUrl: string): Promise<SiteInspection>
     images: extractImages(html, pageUrl),
     colors: extractColors(cssBlob, html, extractMeta(html, "theme-color") ?? ""),
     fonts: extractFonts(cssBlob, html),
-    tech: detectTech(html, pageUrl, generator),
+    tech: uniqueTech([
+      ...detectTech(html, pageUrl, generator),
+      ...detectHosting(fetched.headers),
+    ]),
     sections: sections.length > 0 ? sections : headings.filter((heading) => heading.level === 1).map((heading) => heading.text),
     wordCount: countWords(stripTags(html)),
     response: {
@@ -84,6 +88,7 @@ async function fetchPublicHtml(startUrl: URL): Promise<{
   status: number;
   contentType: string;
   bytes: number;
+  headers: Array<[string, string]>;
 }> {
   let current = startUrl;
 
@@ -134,6 +139,7 @@ async function fetchPublicHtml(startUrl: URL): Promise<{
       status: response.status,
       contentType,
       bytes: buffer.byteLength,
+      headers: [...response.headers.entries()],
     };
   }
 
@@ -175,6 +181,17 @@ async function fetchSameOriginCss(hrefs: string[], pageUrl: URL): Promise<string
 function countWords(text: string): number {
   if (!text) return 0;
   return text.split(" ").filter(Boolean).length;
+}
+
+function uniqueTech(items: string[]): string[] {
+  const seen = new Set<string>();
+  const tech: string[] = [];
+  for (const item of items) {
+    if (seen.has(item)) continue;
+    seen.add(item);
+    tech.push(item);
+  }
+  return tech;
 }
 
 export { PublicUrlError };

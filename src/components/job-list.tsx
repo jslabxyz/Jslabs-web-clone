@@ -42,7 +42,7 @@ export function JobList() {
             <p className="text-xs tracking-[0.16em] text-muted-foreground uppercase">{job.host}</p>
             <p className="mt-1 truncate text-lg">{job.inspection.title}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              {new Date(job.createdAt).toLocaleString()} · {job.inspection.tech[0] ?? "stack unknown"}
+              {new Date(job.inspection.fetchedAt).toLocaleString()} · {job.inspection.tech[0] ?? "stack unknown"}
             </p>
           </div>
           <div className="flex gap-2">

@@ -260,8 +260,8 @@ export function extractColors(...chunks: string[]): string[] {
 export function extractFonts(...chunks: string[]): string[] {
   const found = new Set<string>();
 
-  const remember = (name: string | undefined) => {
-    const usable = usableFontName(name);
+  const remember = (name: string | null | undefined) => {
+    const usable = usableFontName(name ?? undefined);
     if (usable) found.add(usable);
   };
 
@@ -281,6 +281,13 @@ export function extractFonts(...chunks: string[]): string[] {
         remember(google.replace(/\+/g, " ").split(":")[0]);
       }
     }
+
+    for (const match of chunk.matchAll(/href=(['"])([^'"]+\.(?:woff2?|ttf|otf))\1/gi)) {
+      remember(fontNameFromAsset(match[2] ?? ""));
+    }
+    for (const match of chunk.matchAll(/url\(\s*(['"]?)([^'")]+?\.(?:woff2?|ttf|otf))\1\s*\)/gi)) {
+      remember(fontNameFromAsset(match[2] ?? ""));
+    }
   }
 
   return [...found].slice(0, MAX_ITEMS.fonts);
@@ -293,13 +300,13 @@ export function detectTech(html: string, finalUrl: URL, generator: string | null
     ["Nuxt", /__NUXT__|\/_nuxt\//i],
     ["SvelteKit", /sveltekit|__sveltekit/i],
     ["Remix", /remix-run|__remixContext/i],
-    ["Gatsby", /gatsby/i],
-    ["WordPress", /wp-content|wordpress/i],
-    ["Shopify", /cdn\.shopify|shopify/i],
-    ["Webflow", /webflow|data-wf-page/i],
+    ["Gatsby", /___gatsby|\/gatsby-|webpackJsonpGatsby|GATSBY_/i],
+    ["WordPress", /wp-content\/|wp-includes\/|wp-json\/|name=["']generator["'][^>]*wordpress/i],
+    ["Shopify", /cdn\.shopify\.com|myshopify\.com|shopify-section|Shopify\.theme/i],
+    ["Webflow", /data-wf-page|cdn\.prod\.website-files\.com/i],
     ["React", /data-reactroot|react-root/i],
     ["Tailwind CSS", /class="[^"]*(?:flex|grid|text-|bg-|px-|py-)[^"]*"/i],
-    ["Vercel", /vercel/i],
+    ["Vercel", /\/_vercel\/|vercel\.live|va\.vercel-scripts\.com/i],
   ];
 
   const tech: string[] = [];
@@ -309,6 +316,15 @@ export function detectTech(html: string, finalUrl: URL, generator: string | null
     }
   }
   return tech;
+}
+
+export function detectHosting(headers: Array<[string, string]>): string[] {
+  const names = headers.map(([name]) => name.toLowerCase());
+  const hosting: string[] = [];
+  if (names.some((name) => name.startsWith("x-vercel"))) hosting.push("Vercel");
+  if (names.some((name) => name === "cf-ray" || name.startsWith("cf-"))) hosting.push("Cloudflare");
+  if (names.some((name) => name.startsWith("x-nf-") || name.startsWith("x-netlify"))) hosting.push("Netlify");
+  return hosting;
 }
 
 export function resolveAssetUrl(raw: string | null, pageUrl: URL): string | null {
@@ -366,6 +382,20 @@ function isRasterOrVectorImage(src: string): boolean {
   } catch {
     return false;
   }
+}
+
+function fontNameFromAsset(path: string): string | undefined {
+  const file = path.split("/").pop()?.split("?")[0];
+  if (!file) return undefined;
+  let base = file.replace(/\.(woff2?|ttf|otf|eot)$/i, "");
+  base = base.replace(/-s(?:\.[a-z0-9_]+)+$/i, "");
+  base = base.replace(/\.[a-f0-9]{5,}$/i, "");
+  if (/^[a-f0-9-]{10,}$/i.test(base)) return undefined;
+  const parts = base
+    .split(/[-_]/)
+    .flatMap((part) => part.replace(/([a-z])([A-Z])/g, "$1 $2").split(" "))
+    .filter((part) => part && !/^(thin|hairline|extralight|extra-light|light|regular|medium|semibold|semi-bold|bold|extrabold|extra-bold|black|italic|oblique|variable|roman)$/i.test(part));
+  return parts.join(" ").trim() || undefined;
 }
 
 function usableFontName(value: string | undefined): string | null {

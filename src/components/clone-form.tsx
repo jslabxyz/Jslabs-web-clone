@@ -6,8 +6,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { EXAMPLE_URL } from "@/lib/constants";
-import { createJobId, upsertJob } from "@/lib/jobs-store";
-import type { InspectResponse } from "@/lib/types";
+import { InspectClientError, inspectAndStore } from "@/lib/inspect-client";
 import { cn } from "@/lib/utils";
 
 type CloneFormProps = {
@@ -27,30 +26,14 @@ export function CloneForm({ compact = false, initialUrl = "" }: CloneFormProps) 
     setUrl(target);
 
     try {
-      const response = await fetch("/api/inspect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: target }),
-      });
-      const payload = (await response.json()) as InspectResponse;
-      if (!payload.ok) {
-        setError(payload.error);
-        return;
-      }
-
-      const host = new URL(payload.inspection.finalUrl).host;
-      const job = {
-        id: createJobId(),
-        createdAt: new Date().toISOString(),
-        sourceUrl: payload.inspection.sourceUrl,
-        host,
-        inspection: payload.inspection,
-        briefMarkdown: payload.briefMarkdown,
-      };
-      upsertJob(job);
+      const job = await inspectAndStore(target);
       router.push(`/jobs/${job.id}`);
-    } catch {
-      setError("The desk could not reach that page. Check the URL and try again.");
+    } catch (caught) {
+      setError(
+        caught instanceof InspectClientError
+          ? caught.message
+          : "The desk could not reach that page. Check the URL and try again.",
+      );
     } finally {
       setPending(false);
     }
@@ -76,11 +59,16 @@ export function CloneForm({ compact = false, initialUrl = "" }: CloneFormProps) 
         <input
           id="clone-url"
           name="url"
-          type="url"
+          type="text"
           required
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           inputMode="url"
-          placeholder="https://example.com"
+          autoComplete="url"
+          placeholder="jslabs.xyz"
           value={url}
+          aria-invalid={error ? true : undefined}
           onChange={(event) => setUrl(event.target.value)}
           className="h-12 flex-1 rounded-xl bg-transparent px-4 text-base text-foreground outline-none placeholder:text-muted-foreground"
         />
@@ -102,7 +90,7 @@ export function CloneForm({ compact = false, initialUrl = "" }: CloneFormProps) 
         >
           Try with jslabs.xyz
         </button>
-        <span>Public pages only. Nothing is published from this desk.</span>
+        <span>Public pages only. https:// is added if you leave it off.</span>
       </div>
       {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
     </form>

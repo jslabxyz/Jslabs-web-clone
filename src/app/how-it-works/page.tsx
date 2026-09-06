@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { InspectApiSamples } from "@/components/inspect-api-samples";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { STUDIO_SITE } from "@/lib/constants";
 
@@ -64,13 +65,7 @@ export default function HowItWorksPage() {
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
           The desk is a UI over one route. Agents, scripts, and other JS Labs tools can inspect a public page without opening a browser. Jobs are still only saved if the client stores them.
         </p>
-        <pre className="mt-6 overflow-x-auto rounded-2xl border border-border bg-secondary p-5 font-mono text-xs leading-6">
-          {`curl -sS -X POST "$ORIGIN/api/inspect" \\
-  -H "content-type: application/json" \\
-  -d '{"url":"https://jslabs.xyz"}'
-
-curl -sS "$ORIGIN/api/inspect?url=https://jslabs.xyz"`}
-        </pre>
+        <InspectApiSamples />
         <p className="mt-4 text-sm leading-6 text-muted-foreground">
           JSON body or query: a public <code className="font-mono text-foreground">url</code>. Response:{" "}
           <code className="font-mono text-foreground">inspection</code> plus{" "}
