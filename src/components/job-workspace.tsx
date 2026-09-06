@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Copy, Download, Trash2 } from "lucide-react";
+import { ArrowUpRight, Copy, Download, RefreshCw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useSyncExternalStore } from "react";
@@ -8,6 +8,8 @@ import { useMemo, useState, useSyncExternalStore } from "react";
 import { CloneForm } from "@/components/clone-form";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { CONTACT_EMAIL } from "@/lib/constants";
+import { downloadText, inspectCurl } from "@/lib/export";
+import { InspectClientError, inspectAndStore } from "@/lib/inspect-client";
 import { deleteJob, getJobsServerSnapshot, getJobsSnapshot, JOBS_SSR_SNAPSHOT, parseJobs, subscribeJobs } from "@/lib/jobs-store";
 import type { CloneJob } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -29,7 +31,9 @@ export function JobWorkspace({ jobId }: { jobId: string }) {
     [jobId, raw],
   );
   const [tab, setTab] = useState<Tab>("overview");
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"brief" | "curl" | "json" | null>(null);
+  const [pending, setPending] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const mailto = useMemo(() => {
     if (!job) return CONTACT_EMAIL;
@@ -80,6 +84,26 @@ export function JobWorkspace({ jobId }: { jobId: string }) {
           </a>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            disabled={pending}
+            onClick={() => {
+              setPending(true);
+              setRefreshError(null);
+              void inspectAndStore(job.inspection.finalUrl, job.id)
+                .catch((caught: unknown) => {
+                  setRefreshError(
+                    caught instanceof InspectClientError
+                      ? caught.message
+                      : "Could not re-inspect that page.",
+                  );
+                })
+                .finally(() => setPending(false));
+            }}
+          >
+            <RefreshCw className={pending ? "animate-spin" : undefined} />
+            {pending ? "Reading…" : "Re-inspect"}
+          </Button>
           <a href={mailto} className={buttonVariants({ className: "h-8 rounded-full px-3" })}>
             Hand off to Jason
           </a>
@@ -95,6 +119,7 @@ export function JobWorkspace({ jobId }: { jobId: string }) {
           </Button>
         </div>
       </div>
+      {refreshError ? <p className="mt-3 text-sm text-destructive">{refreshError}</p> : null}
 
       <div className="mt-6 flex flex-wrap gap-2">
         {TABS.map((item) => (
@@ -115,18 +140,35 @@ export function JobWorkspace({ jobId }: { jobId: string }) {
       </div>
 
       <div className="mt-8">
-        {tab === "overview" ? <Overview job={job} /> : null}
+        {tab === "overview" ? (
+          <Overview
+            job={job}
+            copiedCurl={copied === "curl"}
+            onCopyCurl={async () => {
+              const origin = window.location.origin;
+              await navigator.clipboard.writeText(inspectCurl(origin, job.inspection.finalUrl));
+              setCopied("curl");
+              window.setTimeout(() => setCopied(null), 2000);
+            }}
+          />
+        ) : null}
         {tab === "tokens" ? <Tokens job={job} /> : null}
         {tab === "structure" ? <Structure job={job} /> : null}
         {tab === "brief" ? (
           <Brief
-            markdown={job.briefMarkdown}
-            host={job.host}
+            job={job}
             copied={copied}
-            onCopy={async () => {
+            onCopyBrief={async () => {
               await navigator.clipboard.writeText(job.briefMarkdown);
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 2000);
+              setCopied("brief");
+              window.setTimeout(() => setCopied(null), 2000);
+            }}
+            onCopyJson={async () => {
+              await navigator.clipboard.writeText(
+                JSON.stringify({ inspection: job.inspection, briefMarkdown: job.briefMarkdown }, null, 2),
+              );
+              setCopied("json");
+              window.setTimeout(() => setCopied(null), 2000);
             }}
           />
         ) : null}
@@ -135,7 +177,15 @@ export function JobWorkspace({ jobId }: { jobId: string }) {
   );
 }
 
-function Overview({ job }: { job: CloneJob }) {
+function Overview({
+  job,
+  copiedCurl,
+  onCopyCurl,
+}: {
+  job: CloneJob;
+  copiedCurl: boolean;
+  onCopyCurl: () => Promise<void>;
+}) {
   const { inspection } = job;
   const stats = [
     ["Status", String(inspection.response.status)],
@@ -197,7 +247,11 @@ function Overview({ job }: { job: CloneJob }) {
         <p className="text-sm text-muted-foreground">
           Inspected {new Date(inspection.fetchedAt).toLocaleString()} from this desk. Review before any build starts.
         </p>
-        <Link href="/how-it-works" className="text-sm underline-offset-4 hover:underline">
+        <Button variant="outline" size="sm" onClick={() => void onCopyCurl()}>
+          <Copy />
+          {copiedCurl ? "Copied curl" : "Copy inspect curl"}
+        </Button>
+        <Link href="/how-it-works#inspect-service" className="block text-sm underline-offset-4 hover:underline">
           See how the factory uses this brief
         </Link>
       </aside>
@@ -253,12 +307,16 @@ function Structure({ job }: { job: CloneJob }) {
       <section className="rounded-2xl border border-border p-5">
         <h2 className="text-sm tracking-[0.14em] text-muted-foreground uppercase">Headings</h2>
         <ul className="mt-4 space-y-2">
-          {headings.map((heading) => (
-            <li key={`${heading.level}-${heading.text}`} className="text-sm" style={{ paddingLeft: (heading.level - 1) * 12 }}>
-              <span className="mr-2 font-mono text-xs text-muted-foreground">H{heading.level}</span>
-              {heading.text}
-            </li>
-          ))}
+          {headings.length > 0 ? (
+            headings.map((heading) => (
+              <li key={`${heading.level}-${heading.text}`} className="text-sm" style={{ paddingLeft: (heading.level - 1) * 12 }}>
+                <span className="mr-2 font-mono text-xs text-muted-foreground">H{heading.level}</span>
+                {heading.text}
+              </li>
+            ))
+          ) : (
+            <li className="text-sm text-muted-foreground">No headings in the public HTML.</li>
+          )}
         </ul>
       </section>
       <section className="rounded-2xl border border-border p-5">
@@ -295,44 +353,51 @@ function Structure({ job }: { job: CloneJob }) {
 }
 
 function Brief({
-  markdown,
-  host,
+  job,
   copied,
-  onCopy,
+  onCopyBrief,
+  onCopyJson,
 }: {
-  markdown: string;
-  host: string;
-  copied: boolean;
-  onCopy: () => Promise<void>;
+  job: CloneJob;
+  copied: "brief" | "curl" | "json" | null;
+  onCopyBrief: () => Promise<void>;
+  onCopyJson: () => Promise<void>;
 }) {
+  const slug = job.host.replaceAll(".", "-");
+  const json = JSON.stringify({ inspection: job.inspection, briefMarkdown: job.briefMarkdown }, null, 2);
+
   return (
     <section className="rounded-2xl border border-border">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
         <h2 className="text-sm tracking-[0.14em] text-muted-foreground uppercase">Factory brief</h2>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => void onCopy()}>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => void onCopyBrief()}>
             <Copy />
-            {copied ? "Copied" : "Copy"}
+            {copied === "brief" ? "Copied" : "Copy markdown"}
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
-              const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
-              const href = URL.createObjectURL(blob);
-              const anchor = document.createElement("a");
-              anchor.href = href;
-              anchor.download = `${host.replaceAll(".", "-")}-clone-brief.md`;
-              anchor.click();
-              URL.revokeObjectURL(href);
-            }}
+            onClick={() => downloadText(`${slug}-clone-brief.md`, job.briefMarkdown, "text/markdown;charset=utf-8")}
           >
             <Download />
-            Download
+            Markdown
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => void onCopyJson()}>
+            <Copy />
+            {copied === "json" ? "Copied JSON" : "Copy JSON"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => downloadText(`${slug}-inspection.json`, json, "application/json;charset=utf-8")}
+          >
+            <Download />
+            JSON
           </Button>
         </div>
       </div>
-      <pre className="max-h-[640px] overflow-auto p-5 font-mono text-xs leading-6 whitespace-pre-wrap">{markdown}</pre>
+      <pre className="max-h-[640px] overflow-auto p-5 font-mono text-xs leading-6 whitespace-pre-wrap">{job.briefMarkdown}</pre>
     </section>
   );
 }
