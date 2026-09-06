@@ -1,6 +1,8 @@
 import { JOBS_STORAGE_KEY } from "@/lib/constants";
 import type { CloneJob } from "@/lib/types";
 
+export const JOBS_SSR_SNAPSHOT = "jslabs-clone-jobs-ssr";
+
 function canUseStorage(): boolean {
   return typeof window !== "undefined";
 }
@@ -52,10 +54,11 @@ export function getJobsSnapshot(): string {
 }
 
 export function getJobsServerSnapshot(): string {
-  return "[]";
+  return JOBS_SSR_SNAPSHOT;
 }
 
 export function parseJobs(raw: string): CloneJob[] {
+  if (raw === JOBS_SSR_SNAPSHOT) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];

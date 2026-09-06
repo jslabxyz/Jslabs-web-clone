@@ -8,7 +8,7 @@ import { useMemo, useState, useSyncExternalStore } from "react";
 import { CloneForm } from "@/components/clone-form";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { CONTACT_EMAIL } from "@/lib/constants";
-import { deleteJob, getJobsServerSnapshot, getJobsSnapshot, parseJobs, subscribeJobs } from "@/lib/jobs-store";
+import { deleteJob, getJobsServerSnapshot, getJobsSnapshot, JOBS_SSR_SNAPSHOT, parseJobs, subscribeJobs } from "@/lib/jobs-store";
 import type { CloneJob } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -39,6 +39,10 @@ export function JobWorkspace({ jobId }: { jobId: string }) {
     );
     return `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
   }, [job]);
+
+  if (raw === JOBS_SSR_SNAPSHOT) {
+    return <p className="text-muted-foreground">Opening this job…</p>;
+  }
 
   if (job === null) {
     return (

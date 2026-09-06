@@ -212,24 +212,49 @@ export function extractInlineCss(html: string): string {
 }
 
 export function extractColors(...chunks: string[]): string[] {
-  const found = new Set<string>();
+  const counts = new Map<string, number>();
   const hex = /#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})\b/gi;
   const rgb = /rgba?\(\s*\d{1,3}\s*[,\s]\s*\d{1,3}\s*[,\s]\s*\d{1,3}(?:\s*[,/]\s*[\d.]+\s*)?\)/gi;
+
+  const remember = (hexValue: string) => {
+    counts.set(hexValue, (counts.get(hexValue) ?? 0) + 1);
+  };
 
   for (const chunk of chunks) {
     for (const match of chunk.match(hex) ?? []) {
       const parsed = parseHexColor(match);
       if (!parsed || parsed.alpha < 0.85 || isNearWhiteOrBlack(parsed.hex)) continue;
-      found.add(parsed.hex);
+      remember(parsed.hex);
     }
     for (const match of chunk.match(rgb) ?? []) {
       const parsed = parseRgbColor(match);
       if (!parsed || parsed.alpha < 0.85 || isNearWhiteOrBlack(parsed.hex)) continue;
-      found.add(parsed.hex);
+      remember(parsed.hex);
     }
   }
 
-  return [...found].slice(0, MAX_ITEMS.colors);
+  const ranked = [...counts.keys()].sort((a, b) => {
+    const chromaDiff = chroma(b) - chroma(a);
+    if (chromaDiff !== 0) return chromaDiff;
+    const countDiff = (counts.get(b) ?? 0) - (counts.get(a) ?? 0);
+    if (countDiff !== 0) return countDiff;
+    return a.localeCompare(b);
+  });
+
+  const unique: string[] = [];
+  for (const color of ranked) {
+    const nearIndex = unique.findIndex((kept) => !farEnoughFromKept(color, [kept]));
+    if (nearIndex === -1) {
+      if (unique.length >= MAX_ITEMS.colors) continue;
+      unique.push(color);
+      continue;
+    }
+    const existing = unique[nearIndex];
+    if (existing && (counts.get(color) ?? 0) > (counts.get(existing) ?? 0)) {
+      unique[nearIndex] = color;
+    }
+  }
+  return unique;
 }
 
 export function extractFonts(...chunks: string[]): string[] {
@@ -393,14 +418,40 @@ function parseRgbColor(value: string): { hex: string; alpha: number } | null {
   };
 }
 
-function isNearWhiteOrBlack(color: string): boolean {
+function hexChannels(color: string): [number, number, number] | null {
   const hex = color.startsWith("#") ? color.slice(1) : color;
-  if (hex.length !== 6) return false;
+  if (hex.length !== 6) return null;
   const r = Number.parseInt(hex.slice(0, 2), 16);
   const g = Number.parseInt(hex.slice(2, 4), 16);
   const b = Number.parseInt(hex.slice(4, 6), 16);
-  if (![r, g, b].every((channel) => Number.isFinite(channel))) return false;
-  const avg = (r + g + b) / 3;
+  if (![r, g, b].every((channel) => Number.isFinite(channel))) return null;
+  return [r, g, b];
+}
+
+function chroma(color: string): number {
+  const channels = hexChannels(color);
+  if (!channels) return 0;
+  return Math.max(...channels) - Math.min(...channels);
+}
+
+function farEnoughFromKept(color: string, kept: string[]): boolean {
+  const candidate = hexChannels(color);
+  if (!candidate) return false;
+  return kept.every((other) => {
+    const existing = hexChannels(other);
+    if (!existing) return true;
+    const distance =
+      Math.abs(candidate[0] - existing[0]) +
+      Math.abs(candidate[1] - existing[1]) +
+      Math.abs(candidate[2] - existing[2]);
+    return distance > 28;
+  });
+}
+
+function isNearWhiteOrBlack(color: string): boolean {
+  const channels = hexChannels(color);
+  if (!channels) return false;
+  const avg = (channels[0] + channels[1] + channels[2]) / 3;
   return avg > 248 || avg < 10;
 }
 

@@ -10,6 +10,7 @@ import {
   deleteJob,
   getJobsServerSnapshot,
   getJobsSnapshot,
+  JOBS_SSR_SNAPSHOT,
   parseJobs,
   subscribeJobs,
 } from "@/lib/jobs-store";
@@ -17,6 +18,10 @@ import {
 export function JobList() {
   const raw = useSyncExternalStore(subscribeJobs, getJobsSnapshot, getJobsServerSnapshot);
   const jobs = useMemo(() => parseJobs(raw), [raw]);
+
+  if (raw === JOBS_SSR_SNAPSHOT) {
+    return <p className="text-muted-foreground">Reading jobs on this browser…</p>;
+  }
 
   if (jobs.length === 0) {
     return (

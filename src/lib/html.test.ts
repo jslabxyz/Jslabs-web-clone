@@ -10,7 +10,7 @@ describe("extractColors", () => {
     const colors = extractColors(
       "color:#151614;background:#F5F4F0;--tw-gradient-from:#0000;box-shadow:0 0 #0000001a;outline:#000c;accent:#4eb9ad;overlay:#0009",
     );
-    assert.deepEqual(colors, ["#151614", "#f5f4f0", "#4eb9ad"]);
+    assert.deepEqual(colors, ["#4eb9ad", "#f5f4f0", "#151614"]);
   });
 
   it("normalizes rgb values to hex and skips low-alpha rgba", () => {
