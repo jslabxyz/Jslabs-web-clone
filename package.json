@@ -1,28 +1,10 @@
 {
-  "name": "ai-website-clone-template",
-  "version": "0.4.0",
+  "name": "jslabs-clone",
+  "version": "0.1.0",
   "private": true,
-  "description": "Clone any website into a clean, modern Next.js codebase using AI coding agents",
-  "author": "JCodesMore",
+  "description": "JS Labs Clone — inspect a live website and produce a factory-ready brief",
+  "author": "JS Labs",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/JCodesMore/ai-website-cloner-template.git"
-  },
-  "homepage": "https://github.com/JCodesMore/ai-website-cloner-template",
-  "bugs": {
-    "url": "https://github.com/JCodesMore/ai-website-cloner-template/issues"
-  },
-  "keywords": [
-    "claude-code",
-    "website-clone",
-    "reverse-engineering",
-    "nextjs",
-    "ai",
-    "template",
-    "tailwindcss",
-    "shadcn-ui"
-  ],
   "engines": {
     "node": ">=24"
   },
@@ -32,7 +14,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "check": "npm run lint && npm run typecheck && npm run build"
+    "test": "node --experimental-strip-types --test --test-reporter=spec src/lib/*.test.ts",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
